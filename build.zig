@@ -1,51 +1,25 @@
 const std = @import("std");
+const utils = @import("build_utils.zig");
 
 pub fn build(b: *std.Build) void {
-
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    
-    const webview = b.dependency("webview", .{});
+
+    const webview = b.dependency("webview", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const webviewRaw = b.addTranslateC(.{
         .root_source_file = webview.path("core/include/webview/webview.h"),
         .optimize = optimize,
         .target = target,
-    }).createModule();
-    
-    _ = b.addModule("webview", .{
-        .root_source_file = b.path("src/webview.zig"),
-        //.dependencies = &[_]std.Build.ModuleDependency{},
-    }).addImport("webviewRaw", webviewRaw);
+    });
 
-    // const objectFile = b.addObject(.{
-    //     .name = "webviewObject",
-    //     .optimize = optimize,
-    //     .target = target,
-    // });
-    // objectFile.defineCMacro("WEBVIEW_STATIC", null);
-    // objectFile.linkLibCpp();
-    // switch(target.os_tag orelse @import("builtin").os.tag) {
-    //     .windows => {
-    //         objectFile.addCSourceFile(.{ .file = b.path("external/webview/webview.cc") .flags = &.{"-std=c++14"}});
-    //         objectFile.addIncludePath(std.build.LazyPath.relative("external/WebView2/"));
-    //         objectFile.linkSystemLibrary("ole32");
-    //         objectFile.linkSystemLibrary("shlwapi");
-    //         objectFile.linkSystemLibrary("version");
-    //         objectFile.linkSystemLibrary("advapi32");
-    //         objectFile.linkSystemLibrary("shell32");
-    //         objectFile.linkSystemLibrary("user32");
-    //     },
-    //     .macos => {
-    //         objectFile.addCSourceFile(.{ .file = b.path("external/webview/webview.cc") .flags = &.{"-std=c++11"}});
-    //         objectFile.linkFramework("WebKit");
-    //     },
-    //     else => {
-    //         objectFile.addCSourceFile(.{ .file = b.path("external/webview/webview.cc") .flags = &.{"-std=c++11"}});
-    //         objectFile.linkSystemLibrary("gtk+-3.0");
-    //         objectFile.linkSystemLibrary("webkit2gtk-4.0");
-    //     }
-    // }
+    const webview_mod = b.addModule("webview", .{
+        .root_source_file = b.path("src/webview.zig"),
+    });
+    webview_mod.addImport("webviewRaw", webviewRaw.createModule());
 
     const staticLib = b.addStaticLibrary(.{
         .name = "webviewStatic",
@@ -53,10 +27,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     staticLib.addIncludePath(webview.path("core/include/webview/"));
-    staticLib.defineCMacro("WEBVIEW_STATIC", null);
+    staticLib.root_module.addCMacro("WEBVIEW_STATIC", "");
+    // staticLib.root_module.addCMacro("WEBVIEW_EDGE", "");
+
     staticLib.linkLibCpp();
-    switch (target.query.os_tag orelse @import("builtin").os.tag) {
+    switch (target.result.os.tag) {
         .windows => {
+            const winrt_path = utils.getWinRTIncludePath() catch unreachable;
+            staticLib.addIncludePath(std.Build.LazyPath{ .cwd_relative = winrt_path });
             staticLib.addCSourceFile(.{ .file = webview.path("core/src/webview.cc"), .flags = &.{"-std=c++14"} });
             staticLib.addIncludePath(b.path("external/WebView2/"));
             staticLib.linkSystemLibrary("ole32");
@@ -99,10 +77,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     sharedLib.addIncludePath(webview.path("core/include/webview/"));
-    sharedLib.defineCMacro("WEBVIEW_BUILD_SHARED", null);
+
+    sharedLib.root_module.addCMacro("WEBVIEW_BUILD_SHARED", "");
+    // sharedLib.root_module.addCMacro("WEBVIEW_EDGE", "");
     sharedLib.linkLibCpp();
-    switch (target.query.os_tag orelse @import("builtin").os.tag) {
+    switch (target.result.os.tag) {
         .windows => {
+            const winrt_path = utils.getWinRTIncludePath() catch unreachable;
+            sharedLib.addIncludePath(std.Build.LazyPath{ .cwd_relative = winrt_path });
             sharedLib.addCSourceFile(.{ .file = webview.path("core/src/webview.cc"), .flags = &.{"-std=c++14"} });
             sharedLib.addIncludePath(b.path("external/WebView2/"));
             sharedLib.linkSystemLibrary("ole32");
@@ -144,7 +126,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    unit_tests.root_module.addImport("webviewRaw", webviewRaw);
+    unit_tests.root_module.addImport("webviewRaw", webviewRaw.createModule());
     unit_tests.linkLibrary(staticLib);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

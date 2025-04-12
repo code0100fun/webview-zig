@@ -15,8 +15,11 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const webview = b.dependency("webview", .{});
-    
+    const webview = b.dependency("webview", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "bind",
         // In this case the main source file is merely a path, however, in more
